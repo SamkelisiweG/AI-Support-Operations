@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handover — digifyCX Ops Portal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<header class="topbar">
+  <a class="topbar-brand" href="dashboard.html">
+    <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+    digifyCX Ops Portal
+  </a>
+  <nav class="topbar-nav">
+    <a class="nav-btn" href="dashboard.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
+    <a class="nav-btn" href="new-request.html"><i class="ti ti-plus"></i> <span>New request</span></a>
+    <a class="nav-btn" href="tracker.html"><i class="ti ti-list-check"></i> <span>Tracker</span></a>
+    <a class="nav-btn" href="handover.html"><i class="ti ti-file-text"></i> <span>Handover</span></a>
+  </nav>
+</header>
+
+<!-- ── Page ── -->
+<main class="page">
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Handover document</div>
+      <div class="page-sub">AI-generated briefing for open requests</div>
+    </div>
+    <button class="btn btn-sm" onclick="generateHandover()"><i class="ti ti-refresh"></i> Regenerate</button>
+  </div>
+
+  <div id="handover-body">
+    <div class="empty" style="padding:60px">
+      <i class="ti ti-file-text"></i>
+      <p>Loading handover document...</p>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div class="toast" id="toast"><i class="ti ti-check"></i><span id="toast-msg"></span></div>
+
+<script src="utils.js"></script>
+<script>
+  async function generateHandover() {
+    const el = document.getElementById('handover-body');
+    const reqs = getRequests();
+
+    if (!reqs.length) {
+      el.innerHTML = `
+        <div class="empty" style="padding:60px">
+          <i class="ti ti-file-text"></i>
+          <p>No requests yet. <a href="new-request.html" style="color:var(--text-accent)">Submit your first one.</a></p>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="empty" style="padding:40px">
+        <div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border-width:3px"></div>
+        <p style="font-size:13px">Generating handover document...</p>
+      </div>`;
+
+    const open     = reqs.filter(r => r.status !== 'Resolved');
+    const critical = reqs.filter(r => r.ai && (r.ai.urgency === 'Critical' || r.ai.urgency === 'High'));
+
+    let brief = '';
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 800,
+          system: 'You are an operations manager at a CX agency. Write a professional handover briefing in plain text (no markdown, no asterisks, no bullet symbols). 2–3 sentences: executive summary, what needs immediate attention, and what the incoming team should prioritise first. Be specific and actionable.',
+          messages: [{
+            role: 'user',
+            content: `TOTAL: ${reqs.length} requests\nOPEN: ${open.length}\nHIGH/CRITICAL: ${critical.length}\nOPEN TICKETS:\n${open.slice(0, 6).map(r => `- ${r.id}: ${r.title} [${r.ai ? r.ai.urgency : '?'}] — ${r.ai ? r.ai.next_action : 'Pending'}`).join('\n')}`
+          }]
+        })
+      });
+      const data = await r.json();
+      brief = data.content.map(c => c.text || '').join('');
+      addLog('Handover document generated');
+    } catch (e) {
+      brief = `${open.length} requests are currently open as of ${dtStr()}. ${critical.length} are high or critical urgency and require immediate attention from the incoming team.`;
+    }
+
+    el.innerHTML = `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:500">Handover briefing</div>
+          <div style="font-size:12px;color:var(--text-muted)">${dtStr()} · ${ts()}</div>
+        </div>
+
+        <div class="stat-grid" style="margin-bottom:24px">
+          <div class="stat"><div class="stat-num">${reqs.length}</div><div class="stat-label">Total</div></div>
+          <div class="stat"><div class="stat-num">${open.length}</div><div class="stat-label">Open</div></div>
+          <div class="stat"><div class="stat-num">${critical.length}</div><div class="stat-label">High / Critical</div></div>
+          <div class="stat"><div class="stat-num">${reqs.filter(r => r.status === 'Resolved').length}</div><div class="stat-label">Resolved</div></div>
+        </div>
+
+        <div class="handover-title"><i class="ti ti-brain"></i> Executive summary</div>
+        <div class="handover-box">${brief}</div>
+
+        ${critical.length ? `
+          <div class="handover-title"><i class="ti ti-alert-triangle" style="color:var(--text-danger)"></i> Immediate attention required</div>
+          ${critical.map(r => `
+            <div class="handover-box" style="border-left:3px solid var(--border-danger);margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <strong>${r.id}</strong>${urgBadge(r.ai.urgency)}
+              </div>
+              <div style="margin-bottom:4px">${r.title}</div>
+              <div style="font-size:12px;color:var(--text-accent)"><i class="ti ti-arrow-right"></i> ${r.ai.next_action}</div>
+            </div>
+          `).join('')}
+        ` : ''}
+
+        <div class="handover-title" style="margin-top:8px"><i class="ti ti-list-check"></i> All open requests</div>
+        <div style="overflow-x:auto">
+          <table class="req-table">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Urgency</th>
+                <th>Next action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${open.map(r => `
+                <tr>
+                  <td style="font-family:var(--font-mono);font-size:11px">${r.id}</td>
+                  <td>${r.title}</td>
+                  <td>${r.ai ? r.ai.category : '—'}</td>
+                  <td>${r.ai ? urgBadge(r.ai.urgency) : '—'}</td>
+                  <td style="font-size:12px;color:var(--text-secondary)">${r.ai ? r.ai.next_action : 'Pending'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    `;
+  }
+
+  // Auto-generate on page load
+  generateHandover();
+</script>
+</body>
+</html>

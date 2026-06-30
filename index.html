@@ -9,7 +9,7 @@
 </head>
 <body>
 
-<!-- ── Topbar ── -->
+<!-- ── Topbar (agent only) ── -->
 <header class="topbar">
   <a class="topbar-brand" href="index.html">
     <div class="brand-dot"><i class="ti ti-cpu"></i></div>
@@ -17,8 +17,10 @@
   </a>
   <nav class="topbar-nav">
     <a class="nav-btn" href="index.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
-    <a class="nav-btn" href="new-request.html"><i class="ti ti-plus"></i> <span>New request</span></a>
     <a class="nav-btn" href="tracker.html"><i class="ti ti-list-check"></i> <span>Tracker</span></a>
+    <a class="nav-btn" href="handover.html"><i class="ti ti-file-text"></i> <span>Handover</span></a>
+    <span class="session-pill"><i class="ti ti-shield-lock"></i> Agent</span>
+    <button class="nav-btn" onclick="agentLogout()"><i class="ti ti-logout"></i> <span>Sign out</span></button>
   </nav>
 </header>
 
@@ -28,12 +30,11 @@
   <div class="page-header">
     <div>
       <div class="page-title">Operations overview</div>
-      <div class="page-sub">Live request intelligence</div>
+      <div class="page-sub">Live request intelligence · Agent view</div>
     </div>
     <a class="btn btn-primary btn-sm" href="new-request.html"><i class="ti ti-plus"></i> New request</a>
   </div>
 
-  <!-- Stats -->
   <div class="stat-grid">
     <div class="stat"><div class="stat-num" id="s-total">0</div><div class="stat-label">Total requests</div></div>
     <div class="stat"><div class="stat-num" id="s-open">0</div><div class="stat-label">Open</div></div>
@@ -41,19 +42,10 @@
     <div class="stat"><div class="stat-num" id="s-resolved">0</div><div class="stat-label">Resolved</div></div>
   </div>
 
-  <!-- Recent requests -->
   <div class="card">
     <div class="card-title"><i class="ti ti-activity"></i> Recent requests</div>
     <div id="dash-list">
-      <div class="empty"><i class="ti ti-inbox"></i><p>No requests yet. <a href="new-request.html" style="color:var(--text-accent)">Submit your first one.</a></p></div>
-    </div>
-  </div>
-
-  <!-- Activity log -->
-  <div class="card">
-    <div class="card-title"><i class="ti ti-terminal-2"></i> Activity log</div>
-    <div id="activity-log">
-      <div class="empty" style="padding:20px"><p style="font-size:13px">Activity appears here as you use the portal.</p></div>
+      <div class="empty" style="padding:30px"><div class="spinner" style="margin:0 auto 10px;width:20px;height:20px;border-width:3px"></div><p style="font-size:13px">Loading requests...</p></div>
     </div>
   </div>
 
@@ -74,10 +66,23 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script src="utils.js"></script>
 <script>
-  function renderDashboard() {
-    const reqs = getRequests();
+  requireAgentAuth();
+  let currentTickets = [];
+
+  async function renderDashboard() {
+    try {
+      const { ok, data } = await fetchAllTickets();
+      if (!ok || data.status !== 'success') throw new Error('failed');
+      currentTickets = data.data || [];
+    } catch (e) {
+      document.getElementById('dash-list').innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i><p>Could not load requests. Check your Worker connection.</p></div>';
+      return;
+    }
+
+    const reqs = currentTickets;
     document.getElementById('s-total').textContent = reqs.length;
     document.getElementById('s-open').textContent = reqs.filter(r => r.status === 'Open').length;
     document.getElementById('s-urgent').textContent = reqs.filter(r => r.ai && (r.ai.urgency === 'High' || r.ai.urgency === 'Critical')).length;
@@ -85,7 +90,7 @@
 
     const list = document.getElementById('dash-list');
     if (!reqs.length) {
-      list.innerHTML = '<div class="empty"><i class="ti ti-inbox"></i><p>No requests yet. <a href="new-request.html" style="color:var(--text-accent)">Submit your first one.</a></p></div>';
+      list.innerHTML = '<div class="empty"><i class="ti ti-inbox"></i><p>No requests yet.</p></div>';
       return;
     }
     list.innerHTML = reqs.slice(0, 8).map(r => `
@@ -102,24 +107,8 @@
     `).join('');
   }
 
-  function renderLog() {
-    const log = getLog();
-    const el = document.getElementById('activity-log');
-    if (!log.length) {
-      el.innerHTML = '<div class="empty" style="padding:20px"><p style="font-size:13px">No activity yet.</p></div>';
-      return;
-    }
-    el.innerHTML = log.map(l => `
-      <div class="log-entry">
-        <span class="log-time">${l.time}</span>
-        <span style="font-size:13px">${l.msg}</span>
-      </div>
-    `).join('');
-  }
-
   function openTicket(id) {
-    const reqs = getRequests();
-    const r = reqs.find(x => x.id === id);
+    const r = currentTickets.find(x => x.id === id);
     if (!r) return;
 
     document.getElementById('modal-title').textContent = `${r.id} — ${r.title}`;
@@ -151,7 +140,7 @@
         </div>
       ` : ''}
       <div style="font-size:13px;font-weight:500;margin-bottom:8px">History</div>
-      ${r.history.map(h => `<div class="log-entry"><span class="log-time">${h.time}</span><span style="font-size:13px">${h.event}</span></div>`).join('')}
+      ${(r.history || []).map(h => `<div class="log-entry"><span class="log-time">${h.time}</span><span style="font-size:13px">${h.event}</span></div>`).join('')}
     `;
 
     document.getElementById('modal-foot').innerHTML = `
@@ -167,17 +156,16 @@
     document.getElementById('close-modal-btn').onclick = closeModal;
   }
 
-  function updateStatus(id, val) {
-    const reqs = getRequests();
-    const r = reqs.find(x => x.id === id);
-    if (!r) return;
-    r.status = val;
-    r.history.push({ time: ts(), event: `Status changed to ${val}`, by: 'User' });
-    saveRequests(reqs);
-    addLog(`${id} status → ${val}`);
-    renderDashboard();
-    renderLog();
-    toast(`${id} updated to ${val}`);
+  async function updateStatus(id, val) {
+    try {
+      const { ok } = await updateTicketStatus(id, val);
+      if (!ok) throw new Error('failed');
+      toast(`${id} updated to ${val}`);
+      closeModal();
+      renderDashboard();
+    } catch (e) {
+      toast('Could not update status', false);
+    }
   }
 
   function closeModal() {
@@ -190,7 +178,25 @@
   document.getElementById('modal-close').onclick = closeModal;
 
   renderDashboard();
-  renderLog();
 </script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
 </body>
 </html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Track Your Request — digifyCX Ops Portal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+
+    <a class="auth-back" href="login.html"><i class="ti ti-arrow-left"></i> Back</a>
+
+    <div class="auth-logo">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <span style="font-weight:500;font-size:15px">digifyCX Ops Portal</span>
+    </div>
+
+    <div class="auth-title">Track your request</div>
+    <div class="auth-sub">Enter your ticket ID and the email you submitted with</div>
+
+    <form class="auth-form" id="lookup-form" onsubmit="return false">
+      <div class="field">
+        <label>Ticket ID</label>
+        <input type="text" id="lk-id" placeholder="e.g. TKT-1001" autocomplete="off" />
+        <div class="err-msg" id="e-id"><i class="ti ti-alert-circle"></i> Enter your ticket ID</div>
+      </div>
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="lk-email" placeholder="The email you used to submit" autocomplete="email" />
+        <div class="err-msg" id="e-email"><i class="ti ti-alert-circle"></i> Enter the email used on submission</div>
+      </div>
+      <div class="err-msg" id="e-general" style="justify-content:center;margin-top:4px">
+        <i class="ti ti-alert-circle"></i> Ticket not found, or the email doesn't match.
+      </div>
+      <button class="btn btn-primary" id="lookup-btn" style="justify-content:center;margin-top:6px" onclick="doLookup()">
+        <i class="ti ti-search"></i> Find my ticket
+      </button>
+    </form>
+
+    <div style="text-align:center;margin-top:18px;font-size:13px;color:var(--text-muted)">
+      Don't have a ticket yet? <a href="new-request.html" style="color:var(--text-accent)">Submit a new request</a>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+  async function doLookup() {
+    const id = document.getElementById('lk-id').value.trim();
+    const email = document.getElementById('lk-email').value.trim();
+
+    document.getElementById('e-id').classList.toggle('show', !id);
+    document.getElementById('e-email').classList.toggle('show', !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    document.getElementById('e-general').classList.remove('show');
+    if (!id || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+
+    const btn = document.getElementById('lookup-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Searching...';
+
+    try {
+      const { ok, data } = await lookupTicket(id, email);
+      if (ok && data.status === 'success') {
+        sessionStorage.setItem('dcx_requestor_ticket_id', id);
+        sessionStorage.setItem('dcx_requestor_email', email);
+        window.location.href = 'my-ticket.html';
+      } else {
+        document.getElementById('e-general').classList.add('show');
+      }
+    } catch (e) {
+      document.getElementById('e-general').classList.add('show');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-search"></i> Find my ticket';
+  }
+
+  document.getElementById('lk-id').addEventListener('keydown', e => { if (e.key === 'Enter') doLookup(); });
+  document.getElementById('lk-email').addEventListener('keydown', e => { if (e.key === 'Enter') doLookup(); });
+</script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
+</body>
+</html>

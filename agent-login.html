@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Sign In — digifyCX Ops Portal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+
+    <a class="auth-back" href="login.html"><i class="ti ti-arrow-left"></i> Back</a>
+
+    <div class="auth-logo">
+      <div class="brand-dot"><i class="ti ti-shield-lock"></i></div>
+      <span style="font-weight:500;font-size:15px">digifyCX Ops Portal</span>
+    </div>
+
+    <div class="auth-title">Agent / Admin sign in</div>
+    <div class="auth-sub">Enter your access PIN to manage requests</div>
+
+    <form class="auth-form" id="pin-form" onsubmit="return false">
+      <div class="field">
+        <label>Access PIN</label>
+        <input type="password" id="pin-input" class="pin-input" maxlength="6" placeholder="••••" inputmode="numeric" autocomplete="off" />
+        <div class="err-msg" id="e-pin"><i class="ti ti-alert-circle"></i> Incorrect PIN. Try again.</div>
+      </div>
+      <button class="btn btn-primary" id="pin-btn" style="justify-content:center;margin-top:6px" onclick="doLogin()">
+        <i class="ti ti-login"></i> Sign in
+      </button>
+    </form>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+  async function doLogin() {
+    const pin = document.getElementById('pin-input').value.trim();
+    document.getElementById('e-pin').classList.remove('show');
+    if (!pin) {
+      document.getElementById('e-pin').classList.add('show');
+      return;
+    }
+
+    const btn = document.getElementById('pin-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Verifying...';
+
+    try {
+      const { ok, data } = await agentLogin(pin);
+      if (ok && data.status === 'success' && data.token) {
+        setAgentToken(data.token);
+        window.location.href = 'dashboard.html';
+      } else {
+        document.getElementById('e-pin').classList.add('show');
+      }
+    } catch (e) {
+      document.getElementById('e-pin').classList.add('show');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-login"></i> Sign in';
+  }
+
+  document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
+</body>
+</html>

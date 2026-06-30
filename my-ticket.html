@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Ticket — digifyCX Ops Portal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ── Topbar (no nav to other tickets — requestor only sees their own) ── -->
+<header class="topbar">
+  <a class="topbar-brand" href="login.html">
+    <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+    digifyCX Ops Portal
+  </a>
+  <nav class="topbar-nav">
+    <span class="session-pill"><i class="ti ti-user"></i> <span id="session-email"></span></span>
+    <button class="nav-btn" onclick="signOut()"><i class="ti ti-logout"></i> <span>Sign out</span></button>
+  </nav>
+</header>
+
+<!-- ── Page ── -->
+<main class="page">
+
+  <div id="loading-state" class="empty" style="padding:60px">
+    <div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border-width:3px"></div>
+    <p style="font-size:13px">Loading your ticket...</p>
+  </div>
+
+  <div id="ticket-content" style="display:none">
+
+    <div class="page-header">
+      <div>
+        <div class="page-title" id="t-title">—</div>
+        <div class="page-sub" id="t-id">—</div>
+      </div>
+      <div id="t-status-badge"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><i class="ti ti-file-description"></i> Request details</div>
+      <div class="detail-grid">
+        <div class="detail-row"><div class="detail-label">Type</div><div class="detail-val" id="t-type">—</div></div>
+        <div class="detail-row"><div class="detail-label">Priority</div><div class="detail-val" id="t-priority">—</div></div>
+        <div class="detail-row"><div class="detail-label">System</div><div class="detail-val" id="t-system">—</div></div>
+        <div class="detail-row"><div class="detail-label">Submitted</div><div class="detail-val" id="t-created">—</div></div>
+      </div>
+      <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;padding:12px;background:var(--surface-1);border-radius:var(--radius);margin-top:14px" id="t-desc"></div>
+    </div>
+
+    <div class="ai-panel" id="ai-panel" style="display:none">
+      <div class="ai-label"><i class="ti ti-brain"></i> AI analysis</div>
+      <div class="ai-output" id="ai-output"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><i class="ti ti-timeline"></i> Progress timeline</div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+
+  </div>
+
+  <div id="error-state" class="empty" style="display:none;padding:60px">
+    <i class="ti ti-alert-circle"></i>
+    <p>We couldn't load your ticket. <a href="requestor-login.html" style="color:var(--text-accent)">Try again</a></p>
+  </div>
+
+</main>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+  const ticketId = sessionStorage.getItem('dcx_requestor_ticket_id');
+  const email = sessionStorage.getItem('dcx_requestor_email');
+
+  if (!ticketId || !email) {
+    window.location.href = 'requestor-login.html';
+  } else {
+    document.getElementById('session-email').textContent = email;
+    loadTicket();
+  }
+
+  async function loadTicket() {
+    try {
+      const { ok, data } = await lookupTicket(ticketId, email);
+      if (!ok || data.status !== 'success') throw new Error('not found');
+      renderTicket(data.data);
+    } catch (e) {
+      document.getElementById('loading-state').style.display = 'none';
+      document.getElementById('error-state').style.display = 'block';
+    }
+  }
+
+  function renderTicket(r) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('ticket-content').style.display = 'flex';
+    document.getElementById('ticket-content').style.flexDirection = 'column';
+    document.getElementById('ticket-content').style.gap = '20px';
+
+    document.getElementById('t-title').textContent = r.title;
+    document.getElementById('t-id').textContent = r.id;
+    document.getElementById('t-status-badge').innerHTML = statusBadge(r.status);
+    document.getElementById('t-type').textContent = r.type;
+    document.getElementById('t-priority').textContent = r.priority;
+    document.getElementById('t-system').textContent = r.system || '—';
+    document.getElementById('t-created').textContent = r.created;
+    document.getElementById('t-desc').textContent = r.description;
+
+    if (r.ai) {
+      document.getElementById('ai-panel').style.display = 'block';
+      const uc = { Low: 'green', Medium: 'amber', High: 'red', Critical: 'red' }[r.ai.urgency] || 'gray';
+      document.getElementById('ai-output').innerHTML = `
+        <div class="ai-field"><div class="ai-field-label">Category</div><div class="ai-field-val">${r.ai.category}</div></div>
+        <div class="ai-field"><div class="ai-field-label">Urgency</div><div class="ai-field-val"><span class="badge badge-${uc}">${r.ai.urgency}</span></div></div>
+        <div class="ai-field"><div class="ai-field-label">Estimated effort</div><div class="ai-field-val">${r.ai.estimated_effort || '—'}</div></div>
+        <div class="ai-field"><div class="ai-field-label">Confidence</div><div class="ai-field-val">${r.ai.confidence}%</div></div>
+        <div class="ai-field ai-full"><div class="ai-field-label">Summary</div><div class="ai-field-val" style="font-weight:400">${r.ai.summary}</div></div>
+        ${r.ai.clarification_needed ? `<div class="ai-field ai-full" style="border:0.5px solid var(--border-warning);background:var(--bg-warning)"><div class="ai-field-label" style="color:var(--text-warning)">Clarification needed</div><div class="ai-field-val" style="font-weight:400">${r.ai.clarification_question}</div></div>` : ''}
+      `;
+    }
+
+    const tl = document.getElementById('timeline');
+    const history = r.history || [];
+    tl.innerHTML = history.map((h, i) => `
+      <div class="timeline-item">
+        <div class="timeline-dot ${i === history.length - 1 ? 'active' : ''}"></div>
+        <div class="timeline-time">${h.time}</div>
+        <div class="timeline-event">${h.event}</div>
+      </div>
+    `).join('') || '<div class="empty" style="padding:20px"><p style="font-size:13px">No updates yet.</p></div>';
+  }
+
+  function signOut() {
+    sessionStorage.removeItem('dcx_requestor_ticket_id');
+    sessionStorage.removeItem('dcx_requestor_email');
+    window.location.href = 'login.html';
+  }
+</script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
+</body>
+</html>

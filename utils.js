@@ -1,49 +1,88 @@
 /* ============================================================
    digifyCX AI Support Operations Portal — Shared Utilities
+   All data now flows through the Cloudflare Worker API.
    ============================================================ */
 
-const AI_SYSTEM = `You are an AI support operations classifier for digifyCX, a CX agency. Analyse the request and return ONLY valid JSON with these exact fields:
-{"category":"one of: Technical, Process, Communication, Data, Integration, Onboarding, Billing, Security","urgency":"one of: Low, Medium, High, Critical","summary":"2-sentence plain English summary","next_action":"specific next action the team should take","clarification_needed":true or false,"clarification_question":"question to ask if true, else null","estimated_effort":"one of: Quick (<1h), Half-day, Full-day, Multi-day, Week+","confidence":0-100}
-Return ONLY the JSON object. No markdown. No explanation.`;
-
-/* ── Storage ── */
-function getRequests() {
-  try { return JSON.parse(localStorage.getItem('dcx_requests') || '[]'); }
-  catch { return []; }
+/* ── Session helpers (agent auth token) ── */
+function getAgentToken() {
+  return sessionStorage.getItem('dcx_agent_token');
 }
 
-function saveRequests(reqs) {
-  localStorage.setItem('dcx_requests', JSON.stringify(reqs));
+function setAgentToken(token) {
+  sessionStorage.setItem('dcx_agent_token', token);
 }
 
-function getLog() {
-  try { return JSON.parse(localStorage.getItem('dcx_log') || '[]'); }
-  catch { return []; }
+function clearAgentSession() {
+  sessionStorage.removeItem('dcx_agent_token');
 }
 
-function saveLog(log) {
-  localStorage.setItem('dcx_log', JSON.stringify(log));
-}
-
-function addLog(msg) {
-  const log = getLog();
-  log.unshift({ msg, time: ts() });
-  if (log.length > 60) log.pop();
-  saveLog(log);
-}
-
-/* ── Helpers ── */
-let _counter = null;
-function uid() {
-  if (_counter === null) {
-    const reqs = getRequests();
-    _counter = reqs.length > 0
-      ? Math.max(...reqs.map(r => parseInt(r.id.replace('TKT-', ''), 10))) 
-      : 1000;
+function requireAgentAuth() {
+  if (!getAgentToken()) {
+    window.location.href = 'agent-login.html';
   }
-  return 'TKT-' + (++_counter);
 }
 
+function agentLogout() {
+  clearAgentSession();
+  window.location.href = 'login.html';
+}
+
+/* ── Generic API call wrapper ── */
+async function apiCall(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const token = getAgentToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401) {
+    clearAgentSession();
+    window.location.href = 'agent-login.html';
+    throw new Error('Unauthorized');
+  }
+
+  return { ok: res.ok, status: res.status, data };
+}
+
+/* ── Ticket submission (public) ── */
+async function submitTicket(payload) {
+  return apiCall(ENDPOINTS.submit, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ── Requestor ticket lookup (public, scoped to id + email) ── */
+async function lookupTicket(id, email) {
+  return apiCall(ENDPOINTS.lookup, {
+    method: 'POST',
+    body: JSON.stringify({ id, email }),
+  });
+}
+
+/* ── Agent login ── */
+async function agentLogin(pin) {
+  return apiCall(ENDPOINTS.agentLogin, {
+    method: 'POST',
+    body: JSON.stringify({ pin }),
+  });
+}
+
+/* ── Agent: get all tickets ── */
+async function fetchAllTickets() {
+  return apiCall(ENDPOINTS.allTickets, { method: 'GET' });
+}
+
+/* ── Agent: update ticket status ── */
+async function updateTicketStatus(id, status) {
+  return apiCall(ENDPOINTS.updateStatus(id), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/* ── Formatting helpers ── */
 function ts() {
   return new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -71,26 +110,6 @@ function toast(msg, ok = true) {
   document.getElementById('toast-msg').textContent = msg;
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3200);
-}
-
-/* ── AI call ── */
-async function classifyWithAI(payload) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: AI_SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `TYPE: ${payload.type}\nPRIORITY: ${payload.priority}\nTITLE: ${payload.title}\nDESCRIPTION: ${payload.description}\nSYSTEM: ${payload.system || 'Not specified'}\nNOTES: ${payload.notes || 'None'}`
-      }]
-    })
-  });
-  const data = await r.json();
-  const raw = data.content.map(c => c.text || '').join('');
-  return JSON.parse(raw.replace(/```json|```/g, '').trim());
 }
 
 /* ── Mark active nav link ── */

@@ -9,17 +9,14 @@
 </head>
 <body>
 
-<!-- ── Topbar ── -->
+<!-- ── Topbar (public — no agent nav) ── -->
 <header class="topbar">
-  <a class="topbar-brand" href="index.html">
+  <a class="topbar-brand" href="login.html">
     <div class="brand-dot"><i class="ti ti-cpu"></i></div>
     digifyCX Ops Portal
   </a>
   <nav class="topbar-nav">
-    <a class="nav-btn" href="index.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
-    <a class="nav-btn" href="new-request.html"><i class="ti ti-plus"></i> <span>New request</span></a>
-    <a class="nav-btn" href="tracker.html"><i class="ti ti-list-check"></i> <span>Tracker</span></a>
-   
+    <a class="nav-btn" href="login.html"><i class="ti ti-arrow-left"></i> <span>Back to sign in</span></a>
   </nav>
 </header>
 
@@ -107,18 +104,21 @@
 
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn" onclick="clearForm()">Clear</button>
-      <button class="btn btn-primary" id="submit-btn" onclick="submitRequest()">
+      <button class="btn btn-primary" id="submit-btn" onclick="submitRequestForm()">
         <i class="ti ti-sparkles"></i> Analyse and submit
       </button>
     </div>
   </div>
 
-  <!-- AI result panel (hidden until submission) -->
+  <!-- Confirmation panel (shown after successful submit) -->
   <div class="ai-panel" id="ai-result" style="display:none">
-    <div class="ai-label"><i class="ti ti-brain"></i> AI analysis</div>
+    <div class="ai-label"><i class="ti ti-circle-check"></i> Request submitted</div>
+    <div style="font-size:13px;line-height:1.7;margin-bottom:14px">
+      Your ticket <strong id="result-id"></strong> has been created and analysed. Save your ticket ID and the email you used — you'll need both to track its progress.
+    </div>
     <div class="ai-output" id="ai-output"></div>
     <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end">
-      <a class="btn btn-sm" href="tracker.html"><i class="ti ti-list-check"></i> View in tracker</a>
+      <button class="btn btn-sm btn-primary" id="track-btn"><i class="ti ti-search"></i> Track this ticket</button>
     </div>
   </div>
 
@@ -127,6 +127,7 @@
 <!-- Toast -->
 <div class="toast" id="toast"><i class="ti ti-check"></i><span id="toast-msg"></span></div>
 
+<script src="config.js"></script>
 <script src="utils.js"></script>
 <script>
   function validate() {
@@ -156,20 +157,17 @@
       if (el) { el.value = ''; el.classList.remove('err'); }
     });
     document.querySelectorAll('.err-msg').forEach(e => e.classList.remove('show'));
-    document.getElementById('ai-result').style.display = 'none';
   }
 
-  async function submitRequest() {
+  async function submitRequestForm() {
     if (!validate()) {
       toast('Fix the highlighted fields before submitting.', false);
-      addLog('Submission blocked — validation errors');
       return;
     }
 
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Analysing...';
-    addLog('Request submitted — AI pipeline running');
 
     const p = {
       name:        document.getElementById('f-name').value,
@@ -183,76 +181,41 @@
       notes:       document.getElementById('f-notes').value,
     };
 
-    let ai = null;
     try {
-      ai = await classifyWithAI(p);
-      addLog(`AI classified: ${ai.category} · ${ai.urgency} urgency · ${ai.confidence}% confidence`);
+      const { ok, data } = await submitTicket(p);
+      if (!ok || data.status !== 'success') {
+        const missing = (data.missing_fields || []).join(', ');
+        toast(missing ? `Missing: ${missing}` : 'Submission failed. Please try again.', false);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ti ti-sparkles"></i> Analyse and submit';
+        return;
+      }
+      showResult(data.data, p.email);
+      toast(`${data.data.id} submitted and analysed.`);
+      clearForm();
     } catch (e) {
-      ai = {
-        category: 'Unclassified',
-        urgency: p.priority,
-        summary: `${p.title}. Manual classification needed.`,
-        next_action: 'Manual review required',
-        clarification_needed: false,
-        clarification_question: null,
-        estimated_effort: 'Unknown',
-        confidence: 0
-      };
-      addLog('AI classification failed — fallback applied');
+      toast('Could not reach the server. Please try again.', false);
     }
 
-    const reqs = getRequests();
-    const ticket = {
-      id: uid(),
-      ...p,
-      ai,
-      status: 'Open',
-      created: dtStr(),
-      history: [{ time: ts(), event: 'Ticket created', by: p.name }]
-    };
-    reqs.unshift(ticket);
-    saveRequests(reqs);
-
-    showAIResult(ai);
-    toast(`${ticket.id} submitted and analysed.`);
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-sparkles"></i> Analyse and submit';
-    clearForm();
   }
 
-  function showAIResult(ai) {
+  function showResult(ticket, email) {
     const panel = document.getElementById('ai-result');
     panel.style.display = 'block';
+    document.getElementById('result-id').textContent = ticket.id;
+
+    const ai = ticket.ai || {};
     const uc = { Low: 'green', Medium: 'amber', High: 'red', Critical: 'red' }[ai.urgency] || 'gray';
 
     document.getElementById('ai-output').innerHTML = `
-      <div class="ai-field">
-        <div class="ai-field-label">Category</div>
-        <div class="ai-field-val">${ai.category}</div>
-      </div>
-      <div class="ai-field">
-        <div class="ai-field-label">Urgency</div>
-        <div class="ai-field-val"><span class="badge badge-${uc}">${ai.urgency}</span></div>
-      </div>
-      <div class="ai-field">
-        <div class="ai-field-label">Estimated effort</div>
-        <div class="ai-field-val">${ai.estimated_effort || '—'}</div>
-      </div>
-      <div class="ai-field">
-        <div class="ai-field-label">Confidence</div>
-        <div class="ai-field-val">
-          ${ai.confidence}%
-          <div class="progress-bar"><div class="progress-fill" style="width:${ai.confidence}%"></div></div>
-        </div>
-      </div>
-      <div class="ai-field ai-full">
-        <div class="ai-field-label">Summary</div>
-        <div class="ai-field-val" style="font-weight:400;line-height:1.6">${ai.summary}</div>
-      </div>
-      <div class="ai-field ai-full">
-        <div class="ai-field-label">Next action</div>
-        <div class="ai-field-val" style="font-weight:400">${ai.next_action}</div>
-      </div>
+      <div class="ai-field"><div class="ai-field-label">Category</div><div class="ai-field-val">${ai.category || '—'}</div></div>
+      <div class="ai-field"><div class="ai-field-label">Urgency</div><div class="ai-field-val"><span class="badge badge-${uc}">${ai.urgency || '—'}</span></div></div>
+      <div class="ai-field"><div class="ai-field-label">Estimated effort</div><div class="ai-field-val">${ai.estimated_effort || '—'}</div></div>
+      <div class="ai-field"><div class="ai-field-label">Confidence</div><div class="ai-field-val">${ai.confidence ?? '—'}%</div></div>
+      <div class="ai-field ai-full"><div class="ai-field-label">Summary</div><div class="ai-field-val" style="font-weight:400;line-height:1.6">${ai.summary || '—'}</div></div>
+      <div class="ai-field ai-full"><div class="ai-field-label">Next action</div><div class="ai-field-val" style="font-weight:400">${ai.next_action || '—'}</div></div>
       ${ai.clarification_needed ? `
         <div class="ai-field ai-full" style="border:0.5px solid var(--border-warning);background:var(--bg-warning)">
           <div class="ai-field-label" style="color:var(--text-warning)"><i class="ti ti-help-circle"></i> Clarification needed</div>
@@ -261,8 +224,33 @@
       ` : ''}
     `;
 
+    document.getElementById('track-btn').onclick = () => {
+      sessionStorage.setItem('dcx_requestor_ticket_id', ticket.id);
+      sessionStorage.setItem('dcx_requestor_email', email);
+      window.location.href = 'my-ticket.html';
+    };
+
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 </script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
 </body>
 </html>

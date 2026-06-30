@@ -13,25 +13,25 @@
   --brand-cyan: #82dcd6;
   --brand-hover: #2d2c52;
 
-  --surface-0: #f4f4f2;
-  --surface-1: #ebebea;
-  --surface-2: #ffffff;
+  --surface-0: #f6efe1;
+  --surface-1: #eef6f6;
+  --surface-2: #fffdf8;
 
-  --text-primary: #1a1a18;
-  --text-secondary: #5a5a56;
-  --text-muted: #9a9a94;
-  --text-accent: #185fa5;
+  --text-primary: #2a2a24;
+  --text-secondary: #5f6b66;
+  --text-muted: #9a9387;
+  --text-accent: #2a7fa3;
   --text-danger: #a32d2d;
   --text-success: #3b6d11;
   --text-warning: #854f0b;
 
-  --border: rgba(0,0,0,0.1);
-  --border-strong: rgba(0,0,0,0.18);
-  --border-accent: #85b7eb;
+  --border: rgba(60,90,90,0.12);
+  --border-strong: rgba(60,90,90,0.22);
+  --border-accent: #9bd4e4;
   --border-danger: #f09595;
   --border-warning: #ef9f27;
 
-  --bg-accent: #e6f1fb;
+  --bg-accent: #e3f3f6;
   --bg-danger: #fcebeb;
   --bg-success: #eaf3de;
   --bg-warning: #faeeda;
@@ -224,7 +224,7 @@ body {
 .badge-green  { background: #eaf3de; color: #3b6d11; }
 .badge-amber  { background: #faeeda; color: #854f0b; }
 .badge-red    { background: #fcebeb; color: #a32d2d; }
-.badge-blue   { background: #e6f1fb; color: #185fa5; }
+.badge-blue   { background: #e3f3f6; color: #2a7fa3; }
 .badge-gray   { background: var(--surface-1); color: var(--text-secondary); border: 0.5px solid var(--border); }
 
 /* ── Stat grid ── */

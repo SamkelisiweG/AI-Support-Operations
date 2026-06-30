@@ -9,7 +9,7 @@
 </head>
 <body>
 
-<!-- ── Topbar ── -->
+<!-- ── Topbar (agent only) ── -->
 <header class="topbar">
   <a class="topbar-brand" href="index.html">
     <div class="brand-dot"><i class="ti ti-cpu"></i></div>
@@ -17,9 +17,10 @@
   </a>
   <nav class="topbar-nav">
     <a class="nav-btn" href="index.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
-    <a class="nav-btn" href="new-request.html"><i class="ti ti-plus"></i> <span>New request</span></a>
     <a class="nav-btn" href="tracker.html"><i class="ti ti-list-check"></i> <span>Tracker</span></a>
- 
+    <a class="nav-btn" href="handover.html"><i class="ti ti-file-text"></i> <span>Handover</span></a>
+    <span class="session-pill"><i class="ti ti-shield-lock"></i> Agent</span>
+    <button class="nav-btn" onclick="agentLogout()"><i class="ti ti-logout"></i> <span>Sign out</span></button>
   </nav>
 </header>
 
@@ -48,7 +49,9 @@
     </div>
   </div>
 
-  <div id="tracker-list"></div>
+  <div id="tracker-list">
+    <div class="empty" style="padding:40px"><div class="spinner" style="margin:0 auto 10px;width:20px;height:20px;border-width:3px"></div><p style="font-size:13px">Loading requests...</p></div>
+  </div>
 
 </main>
 
@@ -67,14 +70,28 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script src="utils.js"></script>
 <script>
-  function renderTracker() {
-    const sf  = document.getElementById('fil-status').value;
-    const uf  = document.getElementById('fil-urg').value;
-    const all = getRequests();
+  requireAgentAuth();
+  let allTickets = [];
 
-    const filtered = all.filter(r =>
+  async function loadTickets() {
+    try {
+      const { ok, data } = await fetchAllTickets();
+      if (!ok || data.status !== 'success') throw new Error('failed');
+      allTickets = data.data || [];
+      renderTracker();
+    } catch (e) {
+      document.getElementById('tracker-list').innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i><p>Could not load requests. Check your Worker connection.</p></div>';
+    }
+  }
+
+  function renderTracker() {
+    const sf = document.getElementById('fil-status').value;
+    const uf = document.getElementById('fil-urg').value;
+
+    const filtered = allTickets.filter(r =>
       (!sf || r.status === sf) &&
       (!uf || (r.ai && r.ai.urgency === uf))
     );
@@ -85,7 +102,7 @@
       el.innerHTML = `
         <div class="empty">
           <i class="ti ti-list-check"></i>
-          <p>${all.length ? 'No requests match the current filters.' : 'No requests yet. <a href="new-request.html" style="color:var(--text-accent)">Submit your first one.</a>'}</p>
+          <p>${allTickets.length ? 'No requests match the current filters.' : 'No requests yet.'}</p>
         </div>`;
       return;
     }
@@ -114,8 +131,7 @@
   }
 
   function openTicket(id) {
-    const reqs = getRequests();
-    const r = reqs.find(x => x.id === id);
+    const r = allTickets.find(x => x.id === id);
     if (!r) return;
 
     document.getElementById('modal-title').textContent = `${r.id} — ${r.title}`;
@@ -151,7 +167,7 @@
         </div>
       ` : ''}
       <div style="font-size:13px;font-weight:500;margin-bottom:8px">History</div>
-      ${r.history.map(h => `
+      ${(r.history || []).map(h => `
         <div class="log-entry">
           <span class="log-time">${h.time}</span>
           <span style="font-size:13px">${h.event}</span>
@@ -172,16 +188,22 @@
     document.getElementById('close-modal-btn').onclick = closeModal;
   }
 
-  function updateStatus(id, val) {
-    const reqs = getRequests();
-    const r = reqs.find(x => x.id === id);
-    if (!r) return;
-    r.status = val;
-    r.history.push({ time: ts(), event: `Status changed to ${val}`, by: 'User' });
-    saveRequests(reqs);
-    addLog(`${id} status → ${val}`);
-    renderTracker();
-    toast(`${id} updated to ${val}`);
+  async function updateStatus(id, val) {
+    try {
+      const { ok } = await updateTicketStatus(id, val);
+      if (!ok) throw new Error('failed');
+      const r = allTickets.find(x => x.id === id);
+      if (r) {
+        r.status = val;
+        r.history = r.history || [];
+        r.history.push({ time: ts(), event: `Status changed to ${val}`, by: 'Agent' });
+      }
+      toast(`${id} updated to ${val}`);
+      closeModal();
+      renderTracker();
+    } catch (e) {
+      toast('Could not update status', false);
+    }
   }
 
   function closeModal() {
@@ -193,7 +215,26 @@
   });
   document.getElementById('modal-close').onclick = closeModal;
 
-  renderTracker();
+  loadTickets();
 </script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
 </body>
 </html>

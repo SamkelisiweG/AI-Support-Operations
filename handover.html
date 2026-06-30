@@ -9,17 +9,18 @@
 </head>
 <body>
 
-<!-- ── Topbar ── -->
+<!-- ── Topbar (agent only) ── -->
 <header class="topbar">
-  <a class="topbar-brand" href="index.html">
+  <a class="topbar-brand" href="dashboard.html">
     <div class="brand-dot"><i class="ti ti-cpu"></i></div>
     digifyCX Ops Portal
   </a>
   <nav class="topbar-nav">
-    <a class="nav-btn" href="index.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
-    <a class="nav-btn" href="new-request.html"><i class="ti ti-plus"></i> <span>New request</span></a>
+    <a class="nav-btn" href="dashboard.html"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
     <a class="nav-btn" href="tracker.html"><i class="ti ti-list-check"></i> <span>Tracker</span></a>
     <a class="nav-btn" href="handover.html"><i class="ti ti-file-text"></i> <span>Handover</span></a>
+    <span class="session-pill"><i class="ti ti-shield-lock"></i> Agent</span>
+    <button class="nav-btn" onclick="agentLogout()"><i class="ti ti-logout"></i> <span>Sign out</span></button>
   </nav>
 </header>
 
@@ -36,8 +37,8 @@
 
   <div id="handover-body">
     <div class="empty" style="padding:60px">
-      <i class="ti ti-file-text"></i>
-      <p>Loading handover document...</p>
+      <div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border-width:3px"></div>
+      <p style="font-size:13px">Loading requests...</p>
     </div>
   </div>
 
@@ -46,26 +47,33 @@
 <!-- Toast -->
 <div class="toast" id="toast"><i class="ti ti-check"></i><span id="toast-msg"></span></div>
 
+<script src="config.js"></script>
 <script src="utils.js"></script>
 <script>
+  requireAgentAuth();
+
   async function generateHandover() {
     const el = document.getElementById('handover-body');
-    const reqs = getRequests();
-
-    if (!reqs.length) {
-      el.innerHTML = `
-        <div class="empty" style="padding:60px">
-          <i class="ti ti-file-text"></i>
-          <p>No requests yet. <a href="new-request.html" style="color:var(--text-accent)">Submit your first one.</a></p>
-        </div>`;
-      return;
-    }
-
     el.innerHTML = `
       <div class="empty" style="padding:40px">
         <div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border-width:3px"></div>
         <p style="font-size:13px">Generating handover document...</p>
       </div>`;
+
+    let reqs = [];
+    try {
+      const { ok, data } = await fetchAllTickets();
+      if (!ok || data.status !== 'success') throw new Error('failed');
+      reqs = data.data || [];
+    } catch (e) {
+      el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i><p>Could not load requests. Check your Worker connection.</p></div>';
+      return;
+    }
+
+    if (!reqs.length) {
+      el.innerHTML = `<div class="empty" style="padding:60px"><i class="ti ti-file-text"></i><p>No requests yet.</p></div>`;
+      return;
+    }
 
     const open     = reqs.filter(r => r.status !== 'Resolved');
     const critical = reqs.filter(r => r.ai && (r.ai.urgency === 'Critical' || r.ai.urgency === 'High'));
@@ -87,7 +95,6 @@
       });
       const data = await r.json();
       brief = data.content.map(c => c.text || '').join('');
-      addLog('Handover document generated');
     } catch (e) {
       brief = `${open.length} requests are currently open as of ${dtStr()}. ${critical.length} are high or critical urgency and require immediate attention from the incoming team.`;
     }
@@ -152,8 +159,26 @@
     `;
   }
 
-  // Auto-generate on page load
   generateHandover();
 </script>
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-dot"><i class="ti ti-cpu"></i></div>
+      <div>
+        <div class="footer-brand-text">digifyCX</div>
+        <div class="footer-tagline">AI-powered CX &amp; Zendesk solutions</div>
+      </div>
+    </div>
+    <div class="footer-contact">
+      <div class="footer-contact-item"><i class="ti ti-mail"></i> <a href="mailto:support@digifycx.com">support@digifycx.com</a></div>
+      <div class="footer-contact-item"><i class="ti ti-phone"></i> <a href="tel:+27310000000">+27 31 000 0000</a></div>
+      <div class="footer-contact-item"><i class="ti ti-map-pin"></i> Durban, KwaZulu-Natal, South Africa</div>
+    </div>
+  </div>
+  <div class="footer-bottom">&copy; 2026 digifyCX. All rights reserved.</div>
+</footer>
+
 </body>
 </html>
